@@ -1,138 +1,81 @@
-import os
-import sys
+from collections import Counter
 
-import numpy as np
-from pathlib import Path
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.utils import shuffle
-from joblib import dump, load
-import Fingerprint
-from Constants import database_recordings, generated, clf_name
 
-# Path to wavs
-wav_path = "data" + os.path.sep + database_recordings
-# Path to npys
-npy_path = "data" + os.path.sep + generated
+def search(database, ids_names, fp_query):
+    matches = {}
+    for (hash_q, offset_q) in fp_query:
+        # Get hash value
+        hash_q_digest = hash_q.digest()
+        try:
+            # Find associated tuples
+            db_lookup = database[hash_q_digest]
+            for item in db_lookup:
+                song_id = item[0]
+                db_offset = item[1]
+                if song_id in matches:
+                    matches[song_id].append((db_offset, offset_q))
+                else:
+                    matches[song_id] = [(db_offset, offset_q)]
+        except KeyError:
+            # Hash not found in db
+            continue
 
-labels = []
+    # Order matches by song id
+    matches = {k: v for k, v in sorted(matches.items(), key=lambda item: item[0])}
 
-def query(fp_query):
-    # Load classifier
-    clf = load(clf_name)
-    predictions = []
-    for fp in range(len(fp_query)):
-        current = fp_query[fp]
-        current = current.flatten()
-        # Get k nearest neighbors
-        knn = clf.kneighbors([current])
-        current_predictions = []
-        for neighbor in knn[1][0]:
-            label = labels[neighbor]
-            current_predictions.append(label)
-        # Get data
-        predictions.append(current_predictions)
-
-    # Extract elements
     candidates = {}
-    for prediction in predictions:
-        # Every prediction here contains a list of candidates (different items) => group them per item
-        for piece in prediction:
-            name = piece[0]
-            time = piece[1]
-            if name not in candidates:
-                candidates[name] = [time]
-            else:
-                candidates[name].append(time)
 
-    # Order candidate dict by name for better overview
-    candidates = {k: v for k, v in sorted(candidates.items(), key=lambda item: item[0])}
-    # candidates = {k: np.sum(np.diff(v)) for k, v in candidates.items()}
-    # candidates = {k: v for k, v in candidates.items() if v > 0}
+    # Group each song into histogram bins
+    for song_id in matches.keys():
+        pairs = matches[song_id]
+        offset_diffs = []
+        # Calculate offset diff for each match of current song
+        for pair in pairs:
+            offset_diffs.append(pair[0] - pair[1])
 
-    # Sort by occurence
-    candidates = {k: v for k, v in sorted(candidates.items(), reverse=True, key=lambda item: len(item[1]))}
-    # Return first three candidates
-    return {k: v for k, v in [x for x in candidates.items()][:3]}
+        most_common = Counter(offset_diffs).most_common(1)
+        maximum = most_common[0][1]
+        candidates[song_id] = maximum
 
+    # Select best 3
+    matches = [k for k, v in sorted(candidates.items(), key=lambda item: item[1], reverse=True)]
+    best_three = matches[:3]
 
-def train_classifier():
-    n_neighbors = 7
-    neigh = KNeighborsClassifier(n_neighbors, p=2, weights='distance', leaf_size=400)
+    # Lookup the song names from the ids
+    song_names = [ids_names[best] for best in best_three]
 
-    # Create input data: All wav fingerprints
-    X = []
-    # Load npys
-    npys = Path(npy_path).rglob("*.npy")
-    # Add each fingerprint to training data
-    for npy in npys:
-        fingerprint = Fingerprint.read_fingerprint(npy)
-        for column in range(fingerprint.shape[0]):
-            current = fingerprint[column]
-            current = current.flatten()
-            X.append(current)
-            # Store both the npy and the index of the current print as label
-            labels.append((str(npy), column))
+    return song_names
 
-    # Shuffle data before fitting
-    # X, y = shuffle(X, labels)
+# def initialise():
+#     # Create full db if not exists
+#     if not os.path.exists("db_S.pkl"):
+#         # Get all wav paths
+#
+#         # Simply use integer as song id for now
+#         counter = 0
+#         for wav in Path(wav_path).rglob("*.wav"):
+#             print("Generating " + str(counter) + " / " + str(300))
+#             song_id = counter
+#             hashes = Fingerprint_S.compute_fingerprint(wav)
+#             for h, offset in hashes:
+#                 database[h.digest()] = (song_id, offset)
+#
+#             # Associate id to name
+#             ids_names[song_id] = str(wav)
+#             counter += 1
+#
+#         with open('db_S.pkl', 'wb') as f:
+#             pickle.dump(database, f, pickle.HIGHEST_PROTOCOL)
+#             print("Database saved to file 'db_S.pkl'")
+#
+#         # Save name ids dict
+#         with open('ids_names.pkl', 'wb') as f:
+#             pickle.dump(ids_names, f, pickle.HIGHEST_PROTOCOL)
+#
+#     else:
+#         # Load database from file
+#         db_file = open("db_S.pkl", "rb")
+#         ids_names_file = open("ids_names.pkl", "rb")
+#         database = pickle.load(db_file)
+#         ids_names = pickle.load(ids_names_file)
 
-    # Train k nearest neighbors classifier
-    neigh.fit(X, labels)
-
-    return neigh
-
-
-def save_classifier(clf):
-    dump(clf, clf_name)
-
-
-def exists_in_database(wav):
-    return os.path.exists("data" + os.path.sep + generated + os.path.sep + wav + ".npy")
-
-
-def initialise():
-    """
-    Calculates fingerprints for all recordings in database and stores them in NPYs
-    :return:
-    """
-    # Get all wav paths
-    wavs = Path(wav_path).rglob("*.wav")
-    # Get number of wavs
-    number_of_wavs = len([_ for _ in wavs])  # This call "invalidates" the pathlib object
-
-    # Try to get npy files (only works if they were created previously)
-    number_of_npys = 0
-    try:
-        npys = Path(npy_path).rglob("*.npy")
-        # Get number of npys
-        number_of_npys = len([_ for _ in npys])  # This call "invalidates" the pathlib object
-
-        if number_of_wavs == number_of_npys:
-            print("All fingerprints are already stored in the database...")
-            return
-    except:
-        print("No NPY files found. Generating DB fingerprints anew...")
-
-    if number_of_npys != number_of_wavs:
-        print("Number of NPY files found doesn't match number of wav files. Generating missing fingerprints...")
-        # Reload pathlib objects
-        wavs = Path(wav_path).rglob("*.wav")
-        npys = Path(npy_path).rglob('*.npy')
-
-        # Number of freshly created fingerprints
-        new_fingerprints = 0
-
-        # Generate missing / all fingerprints
-        for wav in wavs:
-            # Convert path to string
-            wav_str = str(wav)
-            # Format
-            wav_str = wav_str[wav_str.rfind(os.path.sep):-4].replace(os.path.sep, "")
-
-            # Only create if there is no fingerprint for that file
-            if not exists_in_database(wav_str):
-                fingerprint, indices = Fingerprint.compute_fingerprint(str(wav))
-                Fingerprint.save_fingerprint(fingerprint, wav_str)
-                new_fingerprints += 1
-
-        print("Done creating fingerprints. New: " + str(new_fingerprints))

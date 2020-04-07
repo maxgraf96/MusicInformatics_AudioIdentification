@@ -18,6 +18,11 @@ clf_name = "nearestNeighbor.joblib"
 # Fingerprint creation process
 global_sr = 8000
 
+# Shazam approach parameters
+N_FFT = 2048
+HOP_SIZE = 512
+
+# Ramona approach parameters (unused)
 # First STFT parameters
 window_length = int(0.1 * global_sr)
 hop_size = ceil(0.025 * global_sr)
@@ -27,7 +32,3 @@ first_stft_sr = 40
 # Second STFT parameters
 window_length_2 = 2 * first_stft_sr
 hop_size_2 = int(0.5 * first_stft_sr)
-
-# Wang paper params
-N_FFT = 2048
-HOP_SIZE = 512
