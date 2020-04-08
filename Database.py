@@ -2,6 +2,13 @@ from collections import Counter
 
 
 def search(database, ids_names, fp_query):
+    """
+    Search the database for a query
+    :param database: The database object
+    :param ids_names: The map from song ids to names
+    :param fp_query: The query fingerprint (collection of hashes)
+    :return: The names of the three best matches
+    """
     matches = {}
     for (hash_q, offset_q) in fp_query:
         # Get hash value
@@ -23,6 +30,7 @@ def search(database, ids_names, fp_query):
     # Order matches by song id
     matches = {k: v for k, v in sorted(matches.items(), key=lambda item: item[0])}
 
+    # Initialise candidates
     candidates = {}
 
     # Group each song into histogram bins
@@ -33,11 +41,13 @@ def search(database, ids_names, fp_query):
         for pair in pairs:
             offset_diffs.append(pair[0] - pair[1])
 
+        # Find most common time-difference value for current song
         most_common = Counter(offset_diffs).most_common(1)
         maximum = most_common[0][1]
+        # Maximum value represents this songs viability as a candidate
         candidates[song_id] = maximum
 
-    # Select best 3
+    # Select best three
     matches = [k for k, v in sorted(candidates.items(), key=lambda item: item[1], reverse=True)]
     best_three = matches[:3]
 

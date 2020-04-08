@@ -1,14 +1,12 @@
+import os
 import pickle
 from pathlib import Path
 
-import numpy as np
-
 import Database
 import Fingerprint
-import os
-from Constants import clf_name, query_recordings
 
-def fingerprint_builder(path_to_db, path_to_fingerprints):
+
+def fingerprintBuilder(path_to_db, path_to_fingerprints):
     """
     Creates fingerprints of all files specified in path_to_db
     :param path_to_db: The path to the database files
@@ -73,7 +71,15 @@ def fingerprint_builder(path_to_db, path_to_fingerprints):
 
     print("Done generating fingerprints")
 
-def audio_identification_(path_to_queryset, path_to_fingerprints, path_to_output_txt):
+def audioIdentification(path_to_queryset, path_to_fingerprints, path_to_output_txt):
+    """
+    This function performs audio identification for each element in a query set against a database of fingerprints
+    :param path_to_queryset: The path (absolute or relative) to the queryset -> *.wav files
+    :param path_to_fingerprints: The path to the fingerprints. NB: This should only point to the containing FOLDER,
+    not the serialised 'db_S.pkl' file itself.
+    :param path_to_output_txt: Path to the output file. A new file is generated if it does not yet exists.
+    :return: None
+    """
     if not os.path.exists(path_to_fingerprints) or not os.path.exists(path_to_fingerprints + os.path.sep + "db_S.pkl"):
         print("Path to fingerprint database does not exist / is invalid. Aborting...")
         return
@@ -118,23 +124,38 @@ def audio_identification_(path_to_queryset, path_to_fingerprints, path_to_output
         counter += 1
 
     print("Done processing. Correct: " + str(round(100 * correct / number_of_query_files, 2)) + "%.")
-    print("Wrong files: " + ", ".join(wrong_files))
+    # print("Wrong files: " + ", ".join(wrong_files))
 
 def analyse(database, ids_names, path):
+    """
+    Helper function to analyse a given file
+    :param database: The loaded database object
+    :param ids_names: The loaded ID to name map
+    :param path: The path to the *.wav file to be analysed
+    :return: A list of the best three results and a flag indicating whether the top guess was correct
+    """
+    # Compute the fingerprint
     fp_q = Fingerprint.compute_fingerprint(path)
+    # Get results from the database
     results = Database.search(database, ids_names, fp_q)
+
     if len(results) == 0:
-        return [], False, False
+        return [], False
 
     # Extract filenames and compare
     path_filename = str(path).split(os.path.sep)[-1].split('-')[0]
     best_result_filename = results[0].split(os.path.sep)[-1][:-4]
     correct = False
     if path_filename == best_result_filename:
-        print("Correct. Yay!")
+        print("Correct!")
         correct = True
 
     return results, correct
 
-# fingerprint_builder("data/database_recordings", "fingerprints")
-# audio_identification_("data/query_recordings", "fingerprints", "output.txt")
+# Example use from command line (*nix):
+# python -c 'import Main; Main.fingerprintBuilder("/path/to/my/database/files", "/path/to/fingerprints"');
+# python -c 'import Main; Main.audioIdentification("/path/to/my/query/files", "/path/to/fingerprints", "/path/to/output.txt");'
+
+# Example use from Python file
+# fingerprintBuilder("data/database_recordings", "fingerprints")
+# audioIdentification_("data/query_recordings", "fingerprints", "output.txt")

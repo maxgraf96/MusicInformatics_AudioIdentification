@@ -2,15 +2,18 @@ import os
 import pickle
 from pathlib import Path
 
-import Fingerprint
-import Main
-
 import numpy as np
+
+import Main
 
 database = {}
 ids_names = {}
 
 def evaluate_all():
+    """
+    Evaluates all query files and prints info
+    :return: None
+    """
     global database, ids_names
     # Load database from file
     db_file = open("fingerprints" + os.path.sep + "db_S.pkl", "rb")
@@ -25,22 +28,39 @@ def evaluate_all():
     number_of_query_files = sum(1 for x in wavs)
 
     f_maxs = []
+    all_f_measures = []
+    all_precisions = []
+    all_recalls = []
     map = 0
     counter = 0
     for wav in Path(wav_path).rglob("*.wav"):
         print("Evaluating " + str(counter) + " of " + str(number_of_query_files))
-        f_max, p_avg = relevance(str(wav).split(os.path.sep)[-1])
-        map += p_avg
+        precision, recall, f_measures, f_max, p_avg = evaluate(str(wav).split(os.path.sep)[-1])
+
+        all_precisions.append(precision)
+        all_recalls.append(recall)
         f_maxs.append(f_max)
+        all_f_measures.append(f_measures)
+        map += p_avg
         counter += 1
 
+    avg_all_f = np.mean(all_f_measures, axis=0)
     f_max_avg = np.mean(f_maxs)
     map /= number_of_query_files
 
-    print("Average F-measure: " + str(f_max_avg) + ", MAP: " + str(map))
+    print("Average precision for first three ranks : " + np.array2string(np.mean(all_precisions, axis=0), separator=", "))
+    print("Average recall for first three ranks : " + np.array2string(np.mean(all_recalls, axis=0), separator=", "))
+    print("Average F-measue values for the first three ranks: " + np.array2string(avg_all_f, separator=", "))
+    print("Average maximum F-measure: " + str(f_max_avg))
+    print("Mean Average Precision: " + str(map))
 
-def relevance(query_path):
-    # fingerprint = Fingerprint.compute_fingerprint(str(query_path))
+def evaluate(query_path):
+    """
+    Evaluate a given *.wav file
+    :param query_path: The path to the *.wav file
+    :return: Precision, recall and f_measures for the first three ranks, the maximum f-measure and the average precision
+    """
+    # Get matching results
     best_three, is_correct = Main.analyse(database, ids_names, str(query_path))
 
     # Get ground truth song ID
@@ -53,44 +73,6 @@ def relevance(query_path):
     for i in range(len(best_three)):
         if best_three[i] in best_ten_gt:
             relevant[i] = 1
-
-    # # Get all ground truth hashes
-    # gt_hashes = []
-    # for k, v in database.items():
-    #     for (sID, offset) in v:
-    #         if sID == song_id:
-    #             gt_hashes.append(k)
-    # Compute relevance for each item
-    # relevant = {}
-    # for item in best_ten:
-    #     # Assume that item is irrelevant
-    #     relevant[item] = 0
-    #
-    #     # Go through all the hashes in the fingerprint
-    #     for (hash, offset) in fingerprint:
-    #         digest = hash.digest()
-    #         is_included = False
-    #         try:
-    #             entries = database[digest]
-    #             # Check if current song id is included in the current hash
-    #             for (song_id, offset) in entries:
-    #                 if best_ten_ids[item] == song_id:
-    #                     is_included = True
-    #                     break
-    #
-    #             # Last step: Check if the current hash (from the fingerprint) is actually part of the
-    #             # ground truth data
-    #             if is_included:
-    #                 for h in gt_hashes:
-    #                     if h == digest:
-    #                         relevant[item] = 1
-    #         except KeyError:
-    #             # In case of an unknown hash continue
-    #             continue
-
-    # Calculate precision and recall for each rank
-
-    # scores = np.array([item[1] for item in relevant.items()])
 
     precision = np.zeros(len(best_three))
     recall = np.zeros(len(best_three))
@@ -114,11 +96,8 @@ def relevance(query_path):
     # Calculate average precision
     p_avg = np.sum(precision * relevant) / 1
 
-    return f_max, p_avg
-
-
-
+    return precision, recall, f_measures, f_max, p_avg
 
 # Evaluate
 # relevance("pop.00050-snippet-10-0.wav")
-evaluate_all()
+# evaluate_all()

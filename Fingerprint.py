@@ -10,11 +10,14 @@ from skimage.feature import peak_local_max
 from Constants import global_sr, N_FFT, HOP_SIZE
 
 # Fan out
-target_zone_x_dist = 1
-peak_neighbourhood_size = 12
 fan_out = 40
 
+# Neighbourhood size
+peak_neighbourhood_size = 12
+
+# Minimum value for allowed time difference (in frames)
 hash_time_delta_min = 1
+# Maximum value for allowed time difference (in frames)
 hash_time_delta_max = 400
 
 # Specifies the "height" of the window used for neighbour search during hashing
@@ -26,7 +29,7 @@ freq_margin = 80
 def compute_fingerprint(path):
     """
        Compute the fingerpringt for a given signal
-       :param sig: The audio signal
+       :param path: The path to the audio file
        :return: The fingerprint
        """
 
@@ -58,7 +61,7 @@ def compute_fingerprint(path):
 
         # Convert to dB scale
         stft = librosa.core.power_to_db(stft)
-        np.save(specpath, stft)
+        # np.save(specpath, stft)
 
     # Calculate peak times (in stft frames and their corresponding frequencies)
     frames, freqs = detect_peaks(stft)
@@ -66,6 +69,7 @@ def compute_fingerprint(path):
     # Generate hash
     hashes = create_hash(frames, freqs)
 
+    # Notify user
     print("Created fingerprint for " + str(path))
     print("Number of hashes found: " + str(len(hashes)))
     print()
@@ -73,23 +77,33 @@ def compute_fingerprint(path):
     return hashes
 
 def create_hash(frames, freqs):
+    """
+    Creates a collection of hashes from two given sets of frametimes and frequency-bin values
+    :param frames: Collection of frame times
+    :param freqs: Collection of frequency bin values
+    :return: The generated hashes
+    """
     # Brute force hash generation by comparing each peak to its neighbors in the zone regulated
-    # By the fan value
+    # By the fan value and the freq_margin
     hashes = []
     for i in range(frames.size):
-        for j in range(target_zone_x_dist, fan_out):
+        for j in range(1, fan_out):
             if i + j < frames.size:
+                # Get frequencies
                 freq1 = freqs[i]
                 freq2 = freqs[i + j]
 
+                # Get times
                 t1 = frames[i]
                 t2 = frames[i + j]
 
                 # Get time difference
                 t_diff = t2 - t1
 
+                # Check whether second peak is in time-frequency window
                 if hash_time_delta_min <= t_diff <= hash_time_delta_max \
                         and freq2 - freq_margin <= freq1 <= freq2 + freq_margin:
+                    # Create hash
                     value = str(freq1) + "|" + str(freq2) + "|" + str(t_diff)
                     gen_hash = hashlib.sha1(value.encode('utf-8'))
                     # Append hash and offset
